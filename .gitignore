@@ -1,0 +1,12 @@
+# build output
+build/
+dist/
+.buildenv/
+*.spec
+__pycache__/
+*.pyc
+# local settings/logs if run from the source folder
+nelyconnect_config.json
+*.log
+.DS_Store
+Thumbs.db

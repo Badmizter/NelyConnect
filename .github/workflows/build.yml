@@ -1,0 +1,101 @@
+# Builds the NelyConnect installers on GitHub's computers.
+#  - Every push of a tag like v2.3.0 -> builds everything and publishes a Release with the installers.
+#  - "Run workflow" button on the Actions tab -> builds and keeps the installers as downloadable artifacts.
+name: Build installers
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run tests
+        run: |
+          python tests/test_transfer.py
+          python tests/test_share.py
+          python tests/test_input.py
+
+  windows:
+    needs: tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install build tools
+        run: python -m pip install --upgrade pyinstaller tkinterdnd2 pystray pillow
+      - name: Build NelyConnect.exe
+        run: python -m PyInstaller --noconfirm --clean --windowed --name NelyConnect --icon assets\icon.ico --add-data "assets;assets" --collect-all tkinterdnd2 --hidden-import nelyinput --hidden-import pystray._win32 nelyconnect.py
+      - name: Build installer
+        run: |
+          choco install innosetup -y --no-progress
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          if ($v -notmatch '^\d') { $v = "0.0.0-dev" }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" installer\NelyConnect.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NelyConnect-Windows
+          path: dist/NelyConnect-Setup.exe
+
+  macos:
+    needs: tests
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15-intel      # Intel Macs (like the iMac)
+            name: Mac-Intel
+          - runner: macos-15            # Apple Silicon Macs (M1/M2/M3/M4)
+            name: Mac-AppleSilicon
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python 3.13 from python.org (uses Tk 8.6)
+        run: |
+          curl -fsSL -o python.pkg https://www.python.org/ftp/python/3.13.7/python-3.13.7-macos11.pkg
+          sudo installer -pkg python.pkg -target /
+      - name: Build NelyConnect.dmg
+        run: ./build_mac_installer.command
+      - run: mv dist/NelyConnect.dmg "dist/NelyConnect-${{ matrix.name }}.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NelyConnect-${{ matrix.name }}
+          path: dist/NelyConnect-${{ matrix.name }}.dmg
+
+  linux:
+    needs: tests
+    runs-on: ubuntu-22.04              # older base = works on more Linux versions
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tk
+        run: sudo apt-get update && sudo apt-get install -y python3-tk python3-venv
+      - name: Build NelyConnect-linux.tar.gz
+        run: ./build_linux_installer.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NelyConnect-Linux
+          path: dist/NelyConnect-linux.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, macos, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true
