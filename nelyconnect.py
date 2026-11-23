@@ -120,6 +120,14 @@ def load_config():
             json.dump(cfg, f, indent=2)
         cfg["_first_run"] = True
     cfg.pop("launch_deskflow", None)      # Deskflow is no longer needed
+    # remove duplicates from the address list (keep the first = higher priority)
+    seen, cleaned = set(), []
+    for a in cfg.get("peer_addresses", []):
+        key = a["address"] if isinstance(a, dict) else a
+        if key not in seen:
+            seen.add(key)
+            cleaned.append(a)
+    cfg["peer_addresses"] = cleaned
     cfg["receive_folder"] = os.path.expanduser(cfg["receive_folder"])
     # allow plain strings in peer_addresses too
     norm = []
@@ -564,7 +572,9 @@ class LinkMonitor(threading.Thread):
         ok = [False] * len(entries)
 
         def probe(i, entry):
-            ok[i] = bool(ping(entry["address"], int(self.cfg["port"])))
+            name = ping(entry["address"], int(self.cfg["port"]))
+            # an address of THIS computer answers too - never treat that as the other computer
+            ok[i] = bool(name) and name != self.cfg["this_computer_name"]
 
         threads = [threading.Thread(target=probe, args=(i, e), daemon=True)
                    for i, e in enumerate(entries)]
@@ -1082,9 +1092,12 @@ def run_ui(cfg):
 
                 def run(item=item, addr=tree.set(item, "address")):
                     t0 = time.time()
-                    ok = ping(addr, port, timeout=1.5)
+                    name = ping(addr, port, timeout=1.5)
                     ms = int((time.time() - t0) * 1000)
-                    text = ("✓ online (%d ms)" % ms) if ok else "✗ no answer"
+                    if name and name == cfg["this_computer_name"]:
+                        text = "✗ this computer!"
+                    else:
+                        text = ("✓ online (%d ms)" % ms) if name else "✗ no answer"
                     events.put(("call", None, lambda: tree.exists(item) and tree.set(item, "status", text)))
 
                 threading.Thread(target=run, daemon=True).start()
@@ -1257,6 +1270,13 @@ def run_ui(cfg):
                      for i in tree.get_children()]
             if not addrs:
                 messagebox.showwarning("NelyConnect", "Add at least one address.", parent=w)
+                return
+            mine_now = set(local_ipv4s())
+            own = [a["address"] for a in addrs if a["address"] in mine_now]
+            if own:
+                messagebox.showwarning("NelyConnect", "These addresses belong to THIS computer, not the %s:\n%s"
+                                       "\n\nRemove them and add the %s's addresses instead."
+                                       % (cfg["peer_name"], ", ".join(own), cfg["peer_name"]), parent=w)
                 return
             cfg["peer_addresses"] = addrs
             cfg["peer_name"] = name_var.get().strip() or cfg["peer_name"]

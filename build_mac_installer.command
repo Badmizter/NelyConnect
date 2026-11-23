@@ -41,7 +41,7 @@ PLIST="$APP/Contents/Info.plist"
 # runs quietly in the background: no Dock icon
 /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" "$PLIST" 2>/dev/null || \
   /usr/libexec/PlistBuddy -c "Set :LSUIElement true" "$PLIST"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 2.3.0" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 2.3.1" "$PLIST" 2>/dev/null || true
 codesign --force --deep --sign - "$APP"
 
 echo "[3/4] Building NelyConnect.dmg..."

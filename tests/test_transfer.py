@@ -25,3 +25,11 @@ h=lambda p: hashlib.md5(open(p,"rb").read()).hexdigest()
 assert h(os.path.join(src,"big.mov"))==h(os.path.join(inbox,"big.mov"))==h(os.path.join(inbox,"big (2).mov"))
 kinds=[e[0] for e in list(ev.queue)]; print(set(kinds))
 print("OK")
+
+# an address that belongs to this computer must never count as "the other computer"
+cfg2 = dict(cfg); cfg2["this_computer_name"] = "SELF"
+own = E.Receiver(dict(cfg2, port=24998), queue.Queue()); own.start()
+cfg2.update(port=24998, peer_addresses=[{"address": "127.0.0.1", "label": "Ethernet"}])
+print("self not used as peer:", E.LinkMonitor(cfg2).check_once() is None)
+assert E.LinkMonitor(cfg2).check_once() is None
+print("OK")

@@ -1,4 +1,4 @@
-# NelyConnect 2.3.0
+# NelyConnect 2.3.1
 
 One app for Windows, macOS and Linux. It lives in the **system tray**: the Windows notification area,
 the Mac menu bar, or the Linux panel. Each feature can be turned on or off:
