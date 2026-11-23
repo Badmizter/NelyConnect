@@ -24,6 +24,7 @@ jobs:
           python tests/test_transfer.py
           python tests/test_share.py
           python tests/test_input.py
+          python tests/test_phone.py
 
   windows:
     needs: tests
@@ -34,9 +35,9 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install build tools
-        run: python -m pip install --upgrade pyinstaller tkinterdnd2 pystray pillow
+        run: python -m pip install --upgrade pyinstaller tkinterdnd2 pystray pillow qrcode
       - name: Build NelyConnect.exe
-        run: python -m PyInstaller --noconfirm --clean --windowed --name NelyConnect --icon assets\icon.ico --add-data "assets;assets" --collect-all tkinterdnd2 --hidden-import nelyinput --hidden-import pystray._win32 nelyconnect.py
+        run: python -m PyInstaller --noconfirm --clean --windowed --name NelyConnect --icon assets\icon.ico --add-data "assets;assets" --collect-all tkinterdnd2 --hidden-import nelyinput --hidden-import nelyphone --hidden-import pystray._win32 nelyconnect.py
       - name: Build installer
         run: |
           choco install innosetup -y --no-progress

@@ -13,12 +13,12 @@ echo "[1/3] Preparing build environment..."
 python3 -m venv --system-site-packages .buildenv
 . .buildenv/bin/activate
 python -m pip install --upgrade pip >/dev/null
-python -m pip install --upgrade pyinstaller tkinterdnd2 pystray pillow python-xlib
+python -m pip install --upgrade pyinstaller tkinterdnd2 pystray pillow python-xlib qrcode
 
 echo "[2/3] Building NelyConnect..."
 python -m PyInstaller --noconfirm --clean --windowed --name NelyConnect \
   --add-data "assets:assets" --collect-all tkinterdnd2 \
-  --hidden-import nelyinput --hidden-import pystray._xorg \
+  --hidden-import nelyinput --hidden-import nelyphone --hidden-import pystray._xorg \
   --hidden-import pystray._appindicator --hidden-import pystray._gtk \
   nelyconnect.py
 deactivate

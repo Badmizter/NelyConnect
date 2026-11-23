@@ -7,11 +7,11 @@ where py >nul 2>&1 || (echo Python is not installed. Get it from https://www.pyt
 
 echo.
 echo [1/3] Installing build tools...
-py -m pip install --upgrade pyinstaller tkinterdnd2 pystray pillow || goto fail
+py -m pip install --upgrade pyinstaller tkinterdnd2 pystray pillow qrcode || goto fail
 
 echo.
 echo [2/3] Building NelyConnect.exe...
-py -m PyInstaller --noconfirm --clean --windowed --name NelyConnect --icon assets\icon.ico --add-data "assets;assets" --collect-all tkinterdnd2 --hidden-import nelyinput --hidden-import pystray._win32 nelyconnect.py || goto fail
+py -m PyInstaller --noconfirm --clean --windowed --name NelyConnect --icon assets\icon.ico --add-data "assets;assets" --collect-all tkinterdnd2 --hidden-import nelyinput --hidden-import nelyphone --hidden-import pystray._win32 nelyconnect.py || goto fail
 
 echo.
 echo [3/3] Building the installer...

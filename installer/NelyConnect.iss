@@ -3,7 +3,7 @@
 
 #define AppName "NelyConnect"
 #ifndef AppVersion
-  #define AppVersion "2.2.2"
+  #define AppVersion "2.3.0"
 #endif
 #define AppExe "NelyConnect.exe"
 
@@ -46,7 +46,7 @@ Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: startup
 [Run]
 ; open the firewall for NelyConnect (files, copy & paste, keyboard & mouse) on every network type
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""NelyConnect"""; Flags: runhidden
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""NelyConnect"" dir=in action=allow protocol=TCP localport=24860,24870 profile=any"; Flags: runhidden
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""NelyConnect"" dir=in action=allow protocol=TCP localport=24860,24870,24880 profile=any"; Flags: runhidden
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Deskflow (NelyConnect)"""; Flags: runhidden
 Filename: "{app}\{#AppExe}"; Description: "Start NelyConnect now"; Flags: nowait postinstall skipifsilent
 

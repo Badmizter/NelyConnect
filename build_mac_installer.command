@@ -29,11 +29,11 @@ fi
 echo "Using $PY  (Tk $("$PY" -c 'import tkinter; print(tkinter.TkVersion)'))"
 
 echo "[1/4] Installing build tools..."
-"$PY" -m pip install --upgrade pyinstaller tkinterdnd2 pystray pillow pyobjc-framework-Quartz
+"$PY" -m pip install --upgrade pyinstaller tkinterdnd2 pystray pillow qrcode pyobjc-framework-Quartz
 
 echo "[2/4] Building NelyConnect.app..."
 "$PY" -m PyInstaller --noconfirm --clean --windowed --name NelyConnect \
-  --icon assets/icon.icns --add-data "assets:assets" --collect-all tkinterdnd2 --hidden-import nelyinput --hidden-import pystray._darwin \
+  --icon assets/icon.icns --add-data "assets:assets" --collect-all tkinterdnd2 --hidden-import nelyinput --hidden-import nelyphone --hidden-import pystray._darwin \
   --osx-bundle-identifier com.nelsonmaita.nelyconnect nelyconnect.py
 
 APP="dist/NelyConnect.app"
@@ -41,7 +41,7 @@ PLIST="$APP/Contents/Info.plist"
 # runs quietly in the background: no Dock icon
 /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" "$PLIST" 2>/dev/null || \
   /usr/libexec/PlistBuddy -c "Set :LSUIElement true" "$PLIST"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 2.2.2" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 2.3.0" "$PLIST" 2>/dev/null || true
 codesign --force --deep --sign - "$APP"
 
 echo "[3/4] Building NelyConnect.dmg..."

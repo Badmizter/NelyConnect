@@ -29,9 +29,9 @@ if [[ ! "$ans" =~ ^[Nn] ]]; then
 fi
 
 if command -v ufw >/dev/null && sudo -n true 2>/dev/null && sudo ufw status | grep -q "Status: active"; then
-  sudo ufw allow 24860,24870/tcp >/dev/null && echo "Firewall: opened ports 24860 and 24870."
+  sudo ufw allow 24860,24870,24880/tcp >/dev/null && echo "Firewall: opened ports 24860, 24870 and 24880."
 elif command -v ufw >/dev/null; then
-  echo "If your firewall is on, run:  sudo ufw allow 24860,24870/tcp"
+  echo "If your firewall is on, run:  sudo ufw allow 24860,24870,24880/tcp"
 fi
 
 echo "Installed. Find NelyConnect in your applications menu, or run: nelyconnect"

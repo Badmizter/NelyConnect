@@ -92,10 +92,19 @@ def default_config():
         "share_files": False,
         "share_password": "",
         "shares": [],
+        "phone_enabled": False,
+        "phone_port": 24880,
+        "phone_token": "",
         "strip_width": 2,
         "strip_alpha": 0.35,
         "strip_color": "#3b82f6",
     }
+
+
+def write_config(cfg):
+    data = {k: v for k, v in cfg.items() if not k.startswith("_")}
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
 
 
 def load_config():
@@ -331,9 +340,10 @@ def remote_upload(address, port, request, local_paths, progress=None):
 
 
 def clean_component(part):
-    part = "".join("_" if c in BAD_CHARS or ord(c) < 32 else c for c in part)
+    """One safe file/folder name: no slashes, no '..', no characters Windows forbids."""
+    part = "".join("_" if c in BAD_CHARS or c == "/" or ord(c) < 32 else c for c in part)
     part = part.strip().rstrip(".")
-    return part or "_"
+    return part if part and part not in (".", "..") else "_"
 
 
 def unique_name(folder, name):
@@ -457,6 +467,28 @@ class Receiver(threading.Thread):
             raise PermissionError("Outside the shared folder")
         return full
 
+    def list_entries(self, share, full):
+        """Visible items of a shared folder (hides dot-files and links leading outside the share)."""
+        entries = []
+        names = [os.path.basename(full)] if os.path.isfile(full) else sorted(
+            os.listdir(full), key=str.lower)
+        base = os.path.dirname(full) if os.path.isfile(full) else full
+        for n in names:
+            if n.startswith(".") or n in SKIP_FILES or n.endswith(".nelyconnect-part"):
+                continue
+            fp = os.path.join(base, n)
+            real = os.path.realpath(fp)
+            root = os.path.realpath(share["path"])
+            if real != root and os.path.commonpath([root, real]) != root:
+                continue                       # link pointing outside the share
+            try:
+                st = os.stat(fp)
+            except OSError:
+                continue
+            isdir = os.path.isdir(fp)
+            entries.append({"n": n, "d": isdir, "s": 0 if isdir else st.st_size, "m": int(st.st_mtime)})
+        return entries, bool(share.get("writable")) and os.path.isdir(full)
+
     def handle_share_request(self, conn, rfile, req, ip, tid):
         kind = req["type"]
         try:
@@ -472,26 +504,8 @@ class Receiver(threading.Thread):
             share = self.find_share(req.get("share"))
             if kind == "list":
                 full = self.resolve(share, req.get("path"))
-                entries = []
-                names = [os.path.basename(full)] if os.path.isfile(full) else sorted(
-                    os.listdir(full), key=str.lower)
-                base = os.path.dirname(full) if os.path.isfile(full) else full
-                for n in names:
-                    if n.startswith(".") or n in SKIP_FILES or n.endswith(".nelyconnect-part"):
-                        continue
-                    fp = os.path.join(base, n)
-                    real = os.path.realpath(fp)
-                    root = os.path.realpath(share["path"])
-                    if real != root and os.path.commonpath([root, real]) != root:
-                        continue                       # link pointing outside the share
-                    try:
-                        st = os.stat(fp)
-                    except OSError:
-                        continue
-                    isdir = os.path.isdir(fp)
-                    entries.append({"n": n, "d": isdir, "s": 0 if isdir else st.st_size, "m": int(st.st_mtime)})
-                return send_json(conn, {"ok": True, "entries": entries,
-                                        "writable": bool(share.get("writable")) and os.path.isdir(full)})
+                entries, writable = self.list_entries(share, full)
+                return send_json(conn, {"ok": True, "entries": entries, "writable": writable})
             if kind == "mkdir":
                 if not share.get("writable"):
                     raise PermissionError("'%s' is read-only" % share["name"])
@@ -638,6 +652,21 @@ def run_ui(cfg):
     link = LinkMonitor(cfg)
     link.start()
 
+    # phone access (web page for iPhone / Android)
+    phone = None
+    try:
+        import types
+        import nelyphone
+        phone = nelyphone.PhoneServer(
+            cfg, receiver, link, events,
+            types.SimpleNamespace(clean_component=clean_component, unique_name=unique_name,
+                                  send_paths=send_paths),
+            ASSETS, lambda: write_config(cfg))
+        phone.start()
+    except Exception:
+        log.exception("Phone access could not start")
+        phone = None
+
     # keyboard & mouse sharing
     import nelyinput
     input_sys = None
@@ -781,6 +810,8 @@ def run_ui(cfg):
                 kind, tid = ev[0], ev[1]
                 if kind == "input":
                     pass                      # status window refreshes itself
+                elif kind == "open_folder":
+                    open_folder(ev[2])
                 elif kind == "clip":
                     set_clipboard(ev[2])
                 elif kind == "call":
@@ -1498,6 +1529,151 @@ def run_ui(cfg):
         update_buttons()
         load_shares()
 
+
+    # ---- phone window (QR code, on/off, send-to-phone list)
+    def open_phone():
+        old = open_dialogs.get("phone")
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return
+        if phone is None:
+            messagebox.showerror("NelyConnect", "Phone access couldn't start on this computer. See the log file.")
+            return
+        import nelyphone
+        w = tk.Toplevel(root)
+        open_dialogs["phone"] = w
+        w.title("NelyConnect — Phone")
+        w.attributes("-topmost", True)
+        w.resizable(False, False)
+        bold = ("Segoe UI" if IS_WIN else "Helvetica", 12, "bold")
+        frm = ttk.Frame(w, padding=16)
+        frm.pack(fill="both", expand=True)
+        left = ttk.Frame(frm)
+        left.grid(row=0, column=0, sticky="n")
+        right = ttk.Frame(frm, padding=(18, 0, 0, 0))
+        right.grid(row=0, column=1, sticky="n")
+
+        on_var = tk.BooleanVar(value=bool(cfg.get("phone_enabled")))
+        ttk.Checkbutton(left, text="Allow my phone to connect", variable=on_var,
+                        command=lambda: (cfg.__setitem__("phone_enabled", on_var.get()),
+                                         write_config(cfg), draw())).pack(anchor="w")
+        qr_label = ttk.Label(left)
+        qr_label.pack(pady=10)
+        hint = ttk.Label(left, text="", justify="center", wraplength=260)
+        hint.pack()
+        addr_row = ttk.Frame(left)
+        addr_row.pack(fill="x", pady=(8, 0))
+        ttk.Label(addr_row, text="Address:").pack(side="left")
+        addrs = nelyphone.wifi_addresses() or ["127.0.0.1"]
+        addr_box = ttk.Combobox(addr_row, values=addrs, state="readonly", width=16)
+        addr_box.set(addrs[0])
+        addr_box.pack(side="left", padx=6)
+        url_var = tk.StringVar()
+        ttk.Entry(left, textvariable=url_var, width=40, state="readonly").pack(fill="x", pady=(8, 4))
+        btns = ttk.Frame(left)
+        btns.pack(fill="x")
+
+        def copy_link():
+            root.clipboard_clear()
+            root.clipboard_append(url_var.get())
+
+        def new_code():
+            if messagebox.askyesno("NelyConnect", "Make a new code? Phones that scanned the old QR code "
+                                   "will need to scan again.", parent=w):
+                phone.reset_token()
+                draw()
+
+        ttk.Button(btns, text="Copy link", command=copy_link).pack(side="left")
+        ttk.Button(btns, text="New code", command=new_code).pack(side="left", padx=6)
+
+        def draw(*_):
+            url = phone.url(addr_box.get())
+            url_var.set(url)
+            if not on_var.get():
+                qr_label.configure(image="", text="\n\nTurn on “Allow my phone\nto connect” to show\nthe QR code\n\n",
+                                   anchor="center", justify="center")
+                hint.configure(text="")
+                return
+            try:
+                import qrcode
+                img = qrcode.make(url, box_size=6, border=2)
+                path = os.path.join(DATA_DIR, "phone_qr.png")
+                img.save(path)
+                images["qr"] = tk.PhotoImage(file=path)
+                qr_label.configure(image=images["qr"], text="")
+            except Exception:
+                qr_label.configure(image="", text="(QR code unavailable — type the address below into the phone's browser)")
+            hint.configure(text="Scan with the phone's camera (iPhone or Android).\n"
+                                "The phone must be on the same Wi-Fi as this computer.")
+
+        addr_box.bind("<<ComboboxSelected>>", draw)
+
+        # send-to-phone list
+        ttk.Label(right, text="Send to phone", font=bold).pack(anchor="w")
+        ttk.Label(right, text="Files you add here appear on the phone's page,\nready to download.",
+                  foreground="#555", justify="left").pack(anchor="w", pady=(2, 8))
+        tree = ttk.Treeview(right, columns=("size",), height=9, selectmode="extended")
+        tree.heading("#0", text="File")
+        tree.heading("size", text="Size")
+        tree.column("#0", width=230)
+        tree.column("size", width=80, anchor="e")
+        tree.pack(fill="both")
+        rb = ttk.Frame(right)
+        rb.pack(fill="x", pady=(8, 0))
+
+        def refresh_list():
+            if not w.winfo_exists():
+                return
+            have = set(tree.get_children())
+            with phone.lock:
+                items = list(phone.outbox)
+            ids = {o["id"] for o in items}
+            for iid in have - ids:
+                tree.delete(iid)
+            for o in items:
+                if o["id"] not in have:
+                    tree.insert("", "end", iid=o["id"], text=("📁 " if o["dir"] else "📄 ") + o["name"],
+                                values=("folder" if o["dir"] else human(o["size"]),))
+            w.after(2000, refresh_list)
+
+        def add_files():
+            phone.add_to_outbox(list(filedialog.askopenfilenames(parent=w, title="Send to phone")))
+            refresh_list()
+
+        def add_folder():
+            d = filedialog.askdirectory(parent=w, title="Send a folder to phone (downloads as .zip)")
+            if d:
+                phone.add_to_outbox([d])
+                refresh_list()
+
+        def remove():
+            for iid in tree.selection():
+                phone.remove_from_outbox(iid)
+            refresh_list()
+
+        ttk.Button(rb, text="Add files…", command=add_files).pack(side="left")
+        ttk.Button(rb, text="Add folder…", command=add_folder).pack(side="left", padx=6)
+        ttk.Button(rb, text="Remove", command=remove).pack(side="left")
+        ttk.Label(right, text="Tip: you can also drag files onto this window.\n"
+                              "Files sent from the phone go to your NelyConnect Inbox.",
+                  foreground="#555", justify="left").pack(anchor="w", pady=(10, 0))
+        if dnd["ok"]:
+            try:
+                w.drop_target_register(DND_FILES)
+                w.dnd_bind("<<Drop>>", lambda e: (phone.add_to_outbox(list(root.tk.splitlist(e.data))),
+                                                  refresh_list(), e.action)[-1])
+            except Exception:
+                pass
+        draw()
+        refresh_list()
+        w.update_idletasks()
+        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+        w.geometry("+%d+%d" % (max(0, sw // 2 - w.winfo_reqwidth() // 2), max(0, sh // 3 - w.winfo_reqheight() // 2)))
+
+    def toggle_phone():
+        cfg["phone_enabled"] = not cfg.get("phone_enabled")
+        write_config(cfg)
+
     # ---- right-click menu
     menu = tk.Menu(root, tearoff=0)
     def open_inbox():
@@ -1506,6 +1682,7 @@ def run_ui(cfg):
 
     menu.add_command(label="Open inbox folder", command=open_inbox)
     menu.add_command(label="Browse %s…" % cfg["peer_name"], command=open_browser)
+    menu.add_command(label="Phone…", command=open_phone)
     menu.add_checkbutton(label="Share keyboard & mouse", variable=input_var,
                          command=toggle_input)
     menu.add_checkbutton(label="Share copy & paste (text)", variable=clip_var,
@@ -1600,7 +1777,8 @@ def run_ui(cfg):
     def start_mac_tray_helper():
         actions = {
             "status": show_status, "browse": open_browser, "inbox": open_inbox,
-            "settings": open_settings, "quit": quit_app,
+            "settings": open_settings, "quit": quit_app, "phone": open_phone,
+            "toggle_phone": toggle_phone,
             "toggle_input": lambda: (input_var.set(not input_var.get()), toggle_input()),
             "toggle_clip": lambda: (clip_var.set(not clip_var.get()), toggle_clipboard()),
             "toggle_share": toggle_share_files,
@@ -1626,7 +1804,8 @@ def run_ui(cfg):
                     send_json(c, {"ok": True, "status": tray_status(), "peer": cfg["peer_name"],
                                   "share_input": bool(cfg.get("share_input")),
                                   "share_clipboard": bool(cfg.get("share_clipboard")),
-                                  "share_files": bool(cfg.get("share_files"))})
+                                  "share_files": bool(cfg.get("share_files")),
+                                  "phone_enabled": bool(cfg.get("phone_enabled"))})
                 except Exception:
                     pass
                 finally:
@@ -1677,6 +1856,7 @@ def run_ui(cfg):
             M("Status…", on_main(show_status), default=True),
             M("Browse %s…" % cfg["peer_name"], on_main(open_browser)),
             M("Open inbox folder", on_main(open_inbox)),
+            M("Phone…", on_main(open_phone)),
             pystray.Menu.SEPARATOR,
             M("Share keyboard & mouse", on_main(flip(input_var, toggle_input)),
               checked=lambda item: bool(cfg.get("share_input"))),
@@ -1684,6 +1864,8 @@ def run_ui(cfg):
               checked=lambda item: bool(cfg.get("share_clipboard"))),
             M("Share my folders", on_main(lambda: (toggle_share_files(), refresh_tray())),
               checked=lambda item: bool(cfg.get("share_files"))),
+            M("Allow phone access", on_main(lambda: (toggle_phone(), refresh_tray())),
+              checked=lambda item: bool(cfg.get("phone_enabled"))),
             pystray.Menu.SEPARATOR,
             M("Settings…", on_main(open_settings)),
             M("Quit NelyConnect", on_main(quit_app)),
@@ -1761,10 +1943,12 @@ def run_tray_helper(port):
         M("Status…", act("status"), default=True),
         M(lambda item: "Browse %s…" % state["peer"], act("browse")),
         M("Open inbox folder", act("inbox")),
+        M("Phone…", act("phone")),
         pystray.Menu.SEPARATOR,
         M("Share keyboard & mouse", act("toggle_input"), checked=lambda item: state.get("share_input", False)),
         M("Share copy & paste (text)", act("toggle_clip"), checked=lambda item: state.get("share_clipboard", False)),
         M("Share my folders", act("toggle_share"), checked=lambda item: state.get("share_files", False)),
+        M("Allow phone access", act("toggle_phone"), checked=lambda item: state.get("phone_enabled", False)),
         pystray.Menu.SEPARATOR,
         M("Settings…", act("settings")),
         M("Quit NelyConnect", act("quit")),

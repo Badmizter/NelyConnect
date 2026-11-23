@@ -1,4 +1,4 @@
-# NelyConnect 2.2.2
+# NelyConnect 2.3.0
 
 One app for Windows, macOS and Linux. It lives in the **system tray**: the Windows notification area,
 the Mac menu bar, or the Linux panel. Each feature can be turned on or off:
@@ -7,6 +7,8 @@ the Mac menu bar, or the Linux panel. Each feature can be turned on or off:
 - **Drag files to the edge:** they're copied to the other computer, with a progress bar.
 - **Copy & paste text** between the two computers.
 - **Shared folders:** pick disks, folders or files the other computer may browse, open, download from and upload to.
+- **Phone (iPhone & Android):** scan a QR code to send photos, videos and files from the phone to either computer,
+  or download files from the computer. You don't need to install an app on the phone.
 
 It uses the **Ethernet cable first** and switches to **Wi-Fi** automatically.
 
@@ -40,10 +42,10 @@ Watch progress in the **Actions** tab. It takes about 10–15 minutes, and then 
 four files. To build without publishing, open Actions → **Build installers** → **Run workflow**. The files then appear
 as downloadable "artifacts" on that run.
 
-Tests: `python tests/test_transfer.py`, `python tests/test_share.py`, `python tests/test_input.py`.
+Tests: `python tests/test_transfer.py`, `python tests/test_share.py`, `python tests/test_input.py`, `python tests/test_phone.py`.
 `tests/test_linux_input.py` needs an X11 display.
 
-Project layout: `nelyconnect.py` (app, file transfer, sharing, tray), `nelyinput.py` (keyboard & mouse),
+Project layout: `nelyconnect.py` (app, file transfer, sharing, tray), `nelyinput.py` (keyboard & mouse), `nelyphone.py` (phone page),
 `assets/` (logo/icons), `installer/` (Windows installer), `linux/` (Linux install scripts),
 `build_*` (local build scripts), `.github/workflows/build.yml` (automatic builds).
 
@@ -104,6 +106,19 @@ The blue line opens into **"Drop to send to iMac"**. Let go, and the files arriv
 
 On Windows, if the icon is hidden, click **^** next to the clock and drag it onto the taskbar.
 
+**Phone (iPhone / Android)**
+1. On the computer, open the tray icon → **Phone…** and tick **"Allow my phone to connect"**. A QR code appears.
+2. Scan it with the phone's camera. The phone must be on the **same Wi-Fi**. The NelyConnect page opens in the browser.
+   Tip: on iPhone, tap Share → **Add to Home Screen** to get a NelyConnect icon.
+3. On the phone:
+   - **Choose photos, videos or files** sends them to this computer, or to the **other computer**. Pick which one with the switch at the top.
+   - **From PC / From iMac** lists files the computer sent to the phone. Tap **Download**.
+   - **Shared folders** lets you browse and download the computer's shared items. Folders download as .zip.
+4. On the computer, use **Add files… / Add folder…** in the Phone window, or drag files onto it, to send things to the phone.
+
+Security: phone access is **off** until you turn it on. It only works on your own network, and only with the secret
+code built into the QR code. **New code** locks out every phone that used the old one.
+
 **Right-click the blue line** also opens the same menu:
 - ☑ **Share keyboard & mouse**
 - ☑ **Share copy & paste (text)**
@@ -144,7 +159,7 @@ The 169.254 addresses can change after a restart. To make the cable permanent:
 - On the PC: Settings → Network → Ethernet → IP assignment → Manual → `10.77.0.1`, mask `255.255.255.0`, no gateway.
 - On the Mac: System Settings → Network → Ethernet → Details → TCP/IP → Manually → `10.77.0.2`, mask `255.255.255.0`.
 
-Ports: 24860 (files, copy & paste) and 24870 (keyboard & mouse).
+Ports: 24860 (files, copy & paste), 24870 (keyboard & mouse) and 24880 (phone page).
 
 ## Linux notes
 
